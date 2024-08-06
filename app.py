@@ -11,16 +11,54 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.neighbors import KNeighborsRegressor
 from xgboost import XGBRegressor
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.ensemble import ExtraTreesRegressor
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 from sklearn.metrics import r2_score, mean_absolute_error
+import sqlite3
 
+# Initialize SQLite database
+def init_db():
+    conn = sqlite3.connect('stocks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS stock_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        last_stock TEXT
+    )
+    ''')
+    conn.commit()
+    conn.close()
 
+def save_last_stock(stock_symbol):
+    conn = sqlite3.connect('stocks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT OR REPLACE INTO stock_data (id, last_stock) VALUES (1, ?)
+    ''', (stock_symbol,))
+    conn.commit()
+    conn.close()
+
+def get_last_stock():
+    conn = sqlite3.connect('stocks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT last_stock FROM stock_data WHERE id = 1
+    ''')
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+# Call init_db() at the start of the script
+init_db()
 
 st.title('Stock Price Predictions')
 st.sidebar.info('Welcome to the Stock Price Prediction App. Choose your options below')
 st.sidebar.info("Developed by Ashwin Prakash")
 st.sidebar.info("For any questions/bug fixes please email ashwinprakash10@gmail.com")
+
+# Display the last viewed stock
+last_stock = get_last_stock()
+if last_stock:
+    st.sidebar.write(f'Last viewed stock: **{last_stock}**')
 
 def main():
     option = st.sidebar.selectbox('Make a choice', ['Visualize','Recent Data', 'Predict'])
@@ -31,14 +69,10 @@ def main():
     else:
         predict()
 
-
-
 @st.cache_resource
 def download_data(op, start_date, end_date):
     df = yf.download(op, start=start_date, end=end_date, progress=False)
     return df
-
-
 
 option = st.sidebar.text_input('Enter a Stock Symbol', value='SPY')
 option = option.upper()
@@ -49,13 +83,11 @@ start_date = st.sidebar.date_input('Start Date', value=before)
 end_date = st.sidebar.date_input('End date', today)
 if st.sidebar.button('Send'):
     if start_date < end_date:
-        st.sidebar.success('Start date: `%s`\n\nEnd date: `%s`' %(start_date, end_date))
-        download_data(option, start_date, end_date)
+        st.sidebar.success('Start date: `%s`\n\nEnd date: `%s`' % (start_date, end_date))
+        data = download_data(option, start_date, end_date)
+        save_last_stock(option)  # Save last viewed stock
     else:
         st.sidebar.error('Error: End date must fall after start date')
-
-
-
 
 data = download_data(option, start_date, end_date)
 scaler = StandardScaler()
@@ -99,12 +131,9 @@ def tech_indicators():
         st.write('Expoenetial Moving Average')
         st.line_chart(ema)
 
-
 def dataframe():
     st.header('Recent Data')
     st.dataframe(data.tail(10))
-
-
 
 def predict():
     model = st.radio('Choose a model', ['LinearRegression', 'RandomForestRegressor', 'ExtraTreesRegressor', 'KNeighborsRegressor', 'XGBoostRegressor'])
@@ -126,7 +155,6 @@ def predict():
         else:
             engine = XGBRegressor()
             model_engine(engine, num)
-
 
 def model_engine(model, num):
     # getting only the closing price
@@ -159,6 +187,6 @@ def model_engine(model, num):
         st.text(f'Day {day}: {i}')
         day += 1
 
-
 if __name__ == '__main__':
     main()
+
